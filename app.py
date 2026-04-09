@@ -49,6 +49,7 @@ ANALYSIS_SECTION_ALIASES = {
 
 
 def init_session_state():
+    # Keep all generated artifacts in session state so tab switches do not lose results.
     defaults = {
         "analysis": None,
         "analysis_pdf": None,
@@ -115,6 +116,7 @@ def extract_text(uploaded_file):
 
 
 def get_uploaded_file_signature(uploaded_file):
+    # Hash the full file content so replacing a resume with the same filename still resets stale results.
     uploaded_file.seek(0)
     content = uploaded_file.getvalue()
     uploaded_file.seek(0)
@@ -132,6 +134,7 @@ def clear_generated_outputs():
 
 
 def analyze_resume(client, text, job_role):
+    # The response format is tightly constrained because the analysis parser depends on stable section headings.
     prompt = f"""
 You are a senior ATS recruiter.
 
@@ -258,6 +261,7 @@ def split_analysis_sections(analysis):
         r"ATS Score:\s*\d{1,3}",
         r"Job Suitability Score:\s*\d{1,3}",
     ]
+    # Strip the score header first so we only parse the narrative sections below it.
     working_text = analysis
     for pattern in score_patterns:
         working_text = re.sub(pattern, "", working_text, flags=re.IGNORECASE)
@@ -272,6 +276,7 @@ def split_analysis_sections(analysis):
     heading_matches.sort(key=lambda item: item[0])
 
     consumed_ranges = []
+    # Slice each heading block until the next known heading so every section stays isolated in the UI.
     for index, (start, end, key) in enumerate(heading_matches):
         next_start = heading_matches[index + 1][0] if index + 1 < len(heading_matches) else len(working_text)
         section_content = working_text[end:next_start]
@@ -282,6 +287,7 @@ def split_analysis_sections(analysis):
 
     other_notes_parts = []
     cursor = 0
+    # Anything outside the known headings is preserved as "Additional Notes" instead of being discarded.
     for start, end in consumed_ranges:
         leftover = clean_section_text(working_text[cursor:start])
         if leftover:
@@ -415,6 +421,7 @@ def generate_pdf_bytes(report_text):
 
     y_position = start_page()
 
+    # Wrap long lines and paginate manually so large analyses do not get cut off in the exported PDF.
     for raw_line in report_text.splitlines():
         wrapped_lines = simpleSplit(raw_line, font_name, font_size, printable_width) or [""]
         for line in wrapped_lines:
@@ -441,6 +448,7 @@ def generate_resume_docx_bytes(text):
     base_style.font.name = "Calibri"
     base_style.font.size = Pt(11)
 
+    # Use lightweight text heuristics to turn plain-text LLM output into a readable DOCX structure.
     lines = [line.strip() for line in text.splitlines()]
     for line in lines:
         if not line:
@@ -502,6 +510,7 @@ if reset_btn:
 if resume_file:
     current_signature = get_uploaded_file_signature(resume_file)
     if current_signature != current_upload_signature:
+        # Clear generated content as soon as a different file is uploaded, even if the name did not change.
         clear_generated_outputs()
         st.session_state["last_uploaded_signature"] = current_signature
 

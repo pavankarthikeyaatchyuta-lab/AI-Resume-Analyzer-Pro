@@ -109,41 +109,6 @@ http://localhost:8501
 - Scanned PDFs with no extractable text may not work correctly.
 - Output quality depends on the resume content and target role provided.
 
-## GitHub Push Steps
-
-If Git is installed on your machine, use these commands from the project folder:
-
-```powershell
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git
-git push -u origin main
-```
-
-If you already created the GitHub repository in the browser, replace:
-
-```text
-https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git
-```
-
-with your actual repository URL.
-
-## Troubleshooting
-
-### Git is not recognized
-
-Install Git for Windows from:
-
-`https://git-scm.com/download/win`
-
-Then reopen PowerShell and run:
-
-```powershell
-git --version
-```
-
 ### Streamlit or package errors
 
 Reinstall dependencies:

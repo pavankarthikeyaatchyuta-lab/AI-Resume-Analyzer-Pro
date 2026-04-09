@@ -5,6 +5,7 @@ import streamlit as st
 
 
 def clean_section_text(text):
+    # Normalize common LLM formatting quirks so every analysis block renders consistently.
     text = text.strip()
     text = text.replace("**", "")
     text = re.sub(r"^[ \t]*\+\s+", "- ", text, flags=re.MULTILINE)
@@ -15,6 +16,7 @@ def clean_section_text(text):
 
 
 def extract_list_items(text):
+    # Collapse wrapped bullet lines back into single list items before rendering them in Streamlit.
     cleaned = clean_section_text(text)
     items = []
     current_item = None
@@ -49,6 +51,7 @@ def extract_list_items(text):
 
 
 def extract_keyword_items(text):
+    # Keywords are displayed as chips, so convert mixed comma/newline output into unique short tokens.
     cleaned = clean_section_text(text).replace("\n", ", ")
     raw_items = re.split(r"\s*,\s*|\s*;\s*", cleaned)
     keywords = []
@@ -77,6 +80,7 @@ def render_report_block(title, content, variant="text"):
     with st.container(border=True):
         st.markdown(f"#### {title}")
 
+        # Each variant preserves the same block layout while changing only the internal presentation.
         if variant == "list":
             items = extract_list_items(content)
             if items:
@@ -112,6 +116,7 @@ def score_summary(score):
 
 
 def render_styles():
+    # Centralize the visual theme here so app.py can focus on behavior and data flow.
     st.markdown(
         """
         <style>
