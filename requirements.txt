@@ -1,0 +1,6 @@
+streamlit
+groq
+pdfplumber
+python-docx
+plotly
+reportlab
