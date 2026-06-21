@@ -9,6 +9,10 @@ AI Resume Analyzer Pro is a Streamlit app that analyzes resumes against a target
 ![Groq](https://img.shields.io/badge/Groq-111827?logo=chatbot&logoColor=white)
 ![Tests](https://img.shields.io/badge/pytest-passing-brightgreen)
 
+## Screenshot
+
+![AI Resume Analyzer Pro screenshot](assets/readme-screenshot.png)
+
 ## Features
 
 - Upload resume files in `PDF` or `DOCX`
@@ -71,7 +75,7 @@ AI_Resume_Analyzer_Pro/
 ### 1. Clone or open the project folder
 
 ```powershell
-cd C:\Users\pavan\Downloads\AI-Resume-Analyzer-Pro
+cd <your-repo-folder>
 ```
 
 ### 2. Create a virtual environment
