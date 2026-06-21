@@ -112,6 +112,13 @@ Optional tuning variables:
 - `GROQ_REQUEST_TIMEOUT_SECONDS` — request timeout used by the Groq client
 - `GROQ_CALL_COOLDOWN_SECONDS` — minimum wait between Groq-backed button clicks
 
+## Streamlit Cloud Deployment
+
+- Add `GROQ_API_KEY` in Streamlit Cloud secrets
+- Optionally set `GROQ_MODEL`, `GROQ_FALLBACK_MODEL`, `GROQ_REQUEST_TIMEOUT_SECONDS`, and `GROQ_CALL_COOLDOWN_SECONDS`
+- Do not commit `.streamlit/secrets.toml` to the repository
+- The app reads Streamlit secrets first, then environment variables
+
 ## Run the App
 
 ```powershell
