@@ -55,9 +55,19 @@ AI_Resume_Analyzer_Pro/
 |-- frontend.py
 |-- requirements.txt
 |-- README.md
+|-- services/
+|   |-- analysis_service.py
+|   |-- chart_service.py
+|   |-- file_service.py
+|   |-- groq_service.py
+|   `-- __init__.py
 |-- tests/
 |   `-- test_app_logic.py
+|-- assets/
+|   |-- readme-banner.svg
+|   `-- readme-screenshot.png
 |-- .gitignore
+`-- LICENSE
 ```
 
 ## Tech Stack
