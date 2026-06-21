@@ -29,7 +29,12 @@ AI Resume Analyzer Pro is a Streamlit app that analyzes resumes against a target
 - Falls back to the legacy text parser if JSON parsing fails
 - Caches repeated analyses for the same resume file and job role
 - Adds light job-description matching support for long pasted JDs
-- Includes unit tests for core parsing and formatting helpers
+- Retries transient Groq failures with exponential backoff
+- Uses explicit Groq request timeouts to avoid hanging sessions
+- Handles rate limits, auth errors, and outages with friendly messages
+- Falls back to a secondary Groq model when the primary one is unavailable
+- Applies a short per-session cooldown to reduce API spam
+- Includes unit tests for core parsing, retry, and formatting helpers
 
 ## Project Structure
 
@@ -99,6 +104,13 @@ PowerShell example:
 ```powershell
 $env:GROQ_API_KEY="your_groq_api_key_here"
 ```
+
+Optional tuning variables:
+
+- `GROQ_MODEL` — primary Groq model name
+- `GROQ_FALLBACK_MODEL` — backup model name if the primary one is unavailable
+- `GROQ_REQUEST_TIMEOUT_SECONDS` — request timeout used by the Groq client
+- `GROQ_CALL_COOLDOWN_SECONDS` — minimum wait between Groq-backed button clicks
 
 ## Run the App
 

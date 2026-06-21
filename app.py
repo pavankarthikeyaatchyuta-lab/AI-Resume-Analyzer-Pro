@@ -1,6 +1,8 @@
 import hashlib
+import json
 import os
 import re
+import time
 from io import BytesIO
 
 import docx
@@ -9,7 +11,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
-from groq import Groq
+from groq import APIConnectionError, APIStatusError, APITimeoutError, AuthenticationError, BadRequestError, Groq, RateLimitError
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import simpleSplit
 from reportlab.pdfgen import canvas
@@ -45,6 +47,55 @@ ANALYSIS_SECTION_ALIASES = {
     "missing_keywords": ["Missing Keywords"],
     "skill_gap_analysis": ["Skill Gap Analysis"],
     "improved_bullets": ["Improved Professional Bullet Points", "Improved Bullet Points"],
+}
+
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_FALLBACK_MODEL = os.getenv("GROQ_FALLBACK_MODEL", "llama-3.1-8b-instant")
+GROQ_REQUEST_TIMEOUT_SECONDS = float(os.getenv("GROQ_REQUEST_TIMEOUT_SECONDS", "40"))
+GROQ_MAX_ATTEMPTS = 3
+GROQ_CALL_COOLDOWN_SECONDS = int(os.getenv("GROQ_CALL_COOLDOWN_SECONDS", "8"))
+
+STOP_WORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "in",
+    "into",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "this",
+    "to",
+    "with",
+    "you",
+    "your",
+    "we",
+    "our",
+    "will",
+    "should",
+    "must",
+    "have",
+    "has",
+    "had",
+    "job",
+    "role",
+    "description",
+    "requirements",
+    "responsibilities",
+    "preferred",
+    "qualification",
+    "qualifications",
 }
 
 
@@ -93,7 +144,7 @@ def get_groq_client():
     if not api_key:
         st.error("Missing Groq API key. Add `GROQ_API_KEY` to Streamlit secrets or environment variables.")
         st.stop()
-    return Groq(api_key=api_key)
+    return Groq(api_key=api_key, timeout=GROQ_REQUEST_TIMEOUT_SECONDS, max_retries=0)
 
 
 def extract_text(uploaded_file):
@@ -124,6 +175,11 @@ def get_uploaded_file_signature(uploaded_file):
     return f"{uploaded_file.name}:{len(content)}:{digest}"
 
 
+def tokenize_for_overlap(text):
+    tokens = re.findall(r"[A-Za-z][A-Za-z0-9+#.-]*", text.lower())
+    return {token for token in tokens if len(token) > 2 and token not in STOP_WORDS and not token.isdigit()}
+
+
 def clear_generated_outputs():
     st.session_state["analysis"] = None
     st.session_state["analysis_pdf"] = None
@@ -133,57 +189,255 @@ def clear_generated_outputs():
     st.session_state["scores"] = None
 
 
+def get_groq_model_candidates():
+    candidates = [GROQ_MODEL]
+    if GROQ_FALLBACK_MODEL and GROQ_FALLBACK_MODEL != GROQ_MODEL:
+        candidates.append(GROQ_FALLBACK_MODEL)
+    return candidates
+
+
+def is_model_unavailable_error(exception):
+    if isinstance(exception, APIStatusError) and getattr(exception, "status_code", None) in {400, 404}:
+        message = str(exception).lower()
+        return "model" in message and any(token in message for token in ["not found", "deprecated", "unavailable", "does not exist"])
+    return False
+
+
+def is_transient_groq_error(exception):
+    if isinstance(exception, (RateLimitError, APITimeoutError, APIConnectionError)):
+        return True
+    if isinstance(exception, APIStatusError):
+        return getattr(exception, "status_code", 0) >= 500
+    return False
+
+
+def classify_groq_error(exception):
+    if isinstance(exception, AuthenticationError):
+        return "auth"
+    if isinstance(exception, BadRequestError):
+        return "bad_request"
+    if isinstance(exception, RateLimitError):
+        return "rate_limit"
+    if is_model_unavailable_error(exception):
+        return "model_unavailable"
+    if isinstance(exception, APIStatusError) and getattr(exception, "status_code", 0) < 500:
+        return "bad_request"
+    if is_transient_groq_error(exception):
+        return "transient"
+    return "generic"
+
+
+def format_groq_error_message(exception):
+    category = classify_groq_error(exception)
+    if category == "rate_limit":
+        return "Too many requests right now, please wait a moment and try again."
+    if category == "auth":
+        return "API key issue — contact the app owner."
+    return "Something went wrong, please try again."
+
+
+def call_groq_with_retry(client, *, messages, temperature=0, response_format=None):
+    last_exception = None
+    for model_index, model_name in enumerate(get_groq_model_candidates()):
+        for attempt in range(1, GROQ_MAX_ATTEMPTS + 1):
+            request_kwargs = {
+                "model": model_name,
+                "temperature": temperature,
+                "messages": messages,
+            }
+            if response_format is not None:
+                request_kwargs["response_format"] = response_format
+
+            try:
+                return client.chat.completions.create(**request_kwargs)
+            except Exception as exception:
+                last_exception = exception
+                category = classify_groq_error(exception)
+
+                if category in {"auth", "bad_request"}:
+                    raise
+
+                if category == "model_unavailable":
+                    break
+
+                if attempt < GROQ_MAX_ATTEMPTS and category in {"transient", "rate_limit"}:
+                    time.sleep(2 ** (attempt - 1))
+                    continue
+
+                if attempt < GROQ_MAX_ATTEMPTS and category == "generic":
+                    time.sleep(2 ** (attempt - 1))
+                    continue
+
+                break
+
+        if last_exception is not None and classify_groq_error(last_exception) in {"auth", "bad_request"}:
+            raise last_exception
+
+        if model_index < len(get_groq_model_candidates()) - 1 and classify_groq_error(last_exception) in {"transient", "rate_limit", "model_unavailable", "generic"}:
+            continue
+
+    raise last_exception
+
+
+def groq_call_allowed(action_key, cooldown_seconds=GROQ_CALL_COOLDOWN_SECONDS):
+    now = time.time()
+    last_call_time = st.session_state.get(f"last_groq_call_at_{action_key}")
+    if last_call_time is not None and now - last_call_time < cooldown_seconds:
+        remaining_seconds = max(1, int(round(cooldown_seconds - (now - last_call_time))))
+        st.warning(f"Please wait a few seconds before trying again. ({remaining_seconds}s remaining)")
+        return False
+
+    st.session_state[f"last_groq_call_at_{action_key}"] = now
+    return True
+
+
+def build_job_description_context(job_role, resume_text):
+    word_count = len(re.findall(r"\b\w+\b", job_role or ""))
+    if word_count < 8:
+        return ""
+
+    job_tokens = tokenize_for_overlap(job_role)
+    resume_tokens = tokenize_for_overlap(resume_text)
+    if not job_tokens:
+        return ""
+
+    overlap = len(job_tokens & resume_tokens) / max(len(job_tokens | resume_tokens), 1)
+    missing_keywords = sorted(job_tokens - resume_tokens)
+    highlighted_missing = ", ".join(missing_keywords[:20])
+
+    if highlighted_missing:
+        return (
+            "Job description grounding:\n"
+            f"- Overlap similarity: {overlap:.2f}\n"
+            f"- Keywords present in the job description but not the resume: {highlighted_missing}"
+        )
+
+    return f"Job description grounding:\n- Overlap similarity: {overlap:.2f}"
+
+
+def normalize_analysis_items(items, limit=None):
+    if isinstance(items, str):
+        items = re.split(r"\s*,\s*|\s*\n\s*", items)
+    elif not isinstance(items, (list, tuple)):
+        items = []
+
+    normalized_items = []
+    seen = set()
+
+    for item in items or []:
+        cleaned_item = re.sub(r"\s+", " ", str(item)).strip(" \t\r\n-•")
+        if not cleaned_item:
+            continue
+
+        lowered = cleaned_item.lower()
+        if lowered in seen:
+            continue
+
+        seen.add(lowered)
+        normalized_items.append(cleaned_item)
+        if limit is not None and len(normalized_items) >= limit:
+            break
+
+    return normalized_items
+
+
+def analysis_json_to_legacy_format(parsed_json) -> dict:
+    resume_score = int(parsed_json.get("resume_score", 70) or 0)
+    ats_score = int(parsed_json.get("ats_score", 65) or 0)
+    job_suitability_score = int(parsed_json.get("job_suitability_score", 60) or 0)
+
+    scores = {
+        "Resume Score": max(0, min(100, resume_score)),
+        "ATS Score": max(0, min(100, ats_score)),
+        "Job Suitability": max(0, min(100, job_suitability_score)),
+    }
+
+    top_suggestions = normalize_analysis_items(parsed_json.get("top_suggestions"), limit=5)
+    missing_keywords = normalize_analysis_items(parsed_json.get("missing_keywords"), limit=10)
+    skill_gap_analysis = normalize_analysis_items(parsed_json.get("skill_gap_analysis"), limit=2)
+    improved_bullets = normalize_analysis_items(parsed_json.get("improved_bullets"), limit=3)
+
+    analysis_sections = [
+        f"Resume Score: {scores['Resume Score']}",
+        f"ATS Score: {scores['ATS Score']}",
+        f"Job Suitability Score: {scores['Job Suitability']}",
+        "",
+        "Top 5 Suggestions",
+        "\n".join(f"- {item}" for item in top_suggestions),
+        "",
+        "Missing Keywords",
+        ", ".join(missing_keywords),
+        "",
+        "Skill Gap Analysis",
+        "\n".join(f"- {item}" for item in skill_gap_analysis),
+        "",
+        "Improved Professional Bullet Points",
+        "\n".join(f"- {item}" for item in improved_bullets),
+    ]
+
+    analysis_text = "\n".join(part for part in analysis_sections if part is not None).strip()
+
+    return {
+        "analysis": analysis_text,
+        "scores": scores,
+    }
+
+
 def analyze_resume(client, text, job_role):
     # The response format is tightly constrained because the analysis parser depends on stable section headings.
+    job_context = build_job_description_context(job_role, text)
     prompt = f"""
 You are a senior ATS recruiter.
 
 Analyze this resume for the job role: {job_role}
 
-Return exactly these sections in plain text:
-- Put each section heading on its own line
-- Do not merge sections together
-- Do not add extra section headings
+Return a single JSON object with this exact schema:
+{{
+  "resume_score": 0,
+  "ats_score": 0,
+  "job_suitability_score": 0,
+  "top_suggestions": ["...", "...", "...", "...", "..."],
+  "missing_keywords": ["...", "..."],
+  "skill_gap_analysis": ["...", "..."],
+  "improved_bullets": ["...", "...", "..."]
+}}
 
-Resume Score: <number from 0-100>
-ATS Score: <number from 0-100>
-Job Suitability Score: <number from 0-100>
+Rules:
+- Return JSON only.
+- Do not wrap the response in markdown fences.
+- Use integers between 0 and 100 for the scores.
+- Keep top_suggestions at exactly 5 items.
+- Keep missing_keywords between 6 and 10 items.
+- Keep skill_gap_analysis at exactly 2 items.
+- Keep improved_bullets at exactly 3 items.
+- Use short strings in each array item.
 
-Top 5 Suggestions
-Provide exactly 5 concise bullets.
-- Each bullet must start with "- "
-- Each bullet must be one sentence
-- No numbering
-- No introductions or explanations
-
-Missing Keywords
-Provide 6 to 10 short keywords or short phrases only.
-- Return them as a comma-separated list
-- No sentence before or after the list
-
-Skill Gap Analysis
-Provide exactly 2 concise bullets.
-- Each bullet must start with "- "
-- Focus only on the biggest gaps
-- No filler text
-
-Improved Professional Bullet Points
-Provide exactly 3 improved resume bullets.
-- Each bullet must start with "- "
-- Rewrite transferable experience where possible
-- Do not say it is difficult or impossible
-- No disclaimer text
+{job_context}
 
 Resume:
 {text}
 """
 
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        temperature=0,
+    completion = call_groq_with_retry(
+        client,
         messages=[{"role": "user", "content": prompt}],
+        temperature=0,
+        response_format={"type": "json_object"},
     )
-    return completion.choices[0].message.content
+    raw_response = completion.choices[0].message.content
+
+    try:
+        parsed_json = json.loads(raw_response)
+        if isinstance(parsed_json, dict):
+            return analysis_json_to_legacy_format(parsed_json)
+    except (TypeError, json.JSONDecodeError):
+        pass
+
+    legacy_text = raw_response.strip()
+    return {
+        "analysis": legacy_text,
+        "scores": parse_scores(legacy_text),
+    }
 
 
 def generate_updated_resume(client, text):
@@ -205,10 +459,10 @@ Original Resume:
 {text}
 """
 
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        temperature=0,
+    completion = call_groq_with_retry(
+        client,
         messages=[{"role": "user", "content": prompt}],
+        temperature=0,
     )
     return completion.choices[0].message.content
 
@@ -517,6 +771,8 @@ if resume_file:
 if analyze_btn:
     if not resume_file:
         st.warning("Please upload a resume.")
+    elif not groq_call_allowed("shared"):
+        pass
     else:
         try:
             with st.spinner("Analyzing resume..."):
@@ -524,16 +780,16 @@ if analyze_btn:
                 if not resume_text:
                     st.warning("We couldn't extract any text from that file. Please upload a text-based PDF or DOCX.")
                 else:
-                    analysis = analyze_resume(client, resume_text, job_role or "General role")
-                    st.session_state["analysis"] = analysis
-                    st.session_state["scores"] = parse_scores(analysis)
-                    st.session_state["analysis_pdf"] = generate_pdf_bytes(analysis)
+                    analysis_result = analyze_resume(client, resume_text, job_role or "General role")
+                    st.session_state["analysis"] = analysis_result["analysis"]
+                    st.session_state["scores"] = analysis_result["scores"]
+                    st.session_state["analysis_pdf"] = generate_pdf_bytes(analysis_result["analysis"])
                     st.session_state["improved_resume"] = None
                     st.session_state["improved_resume_docx"] = None
                     st.session_state["improved_resume_pdf"] = None
         except Exception as exc:
             clear_generated_outputs()
-            st.error(f"Unable to analyze the resume right now: {exc}")
+            st.error(format_groq_error_message(exc))
 
 render_hero(st.session_state["scores"])
 render_metrics(st.session_state["scores"])
@@ -579,6 +835,8 @@ with tab3:
     if generate_improved:
         if not resume_file:
             st.warning("Please upload a resume first.")
+        elif not groq_call_allowed("shared"):
+            pass
         else:
             try:
                 with st.spinner("Generating improved resume..."):
@@ -595,7 +853,7 @@ with tab3:
                 st.session_state["improved_resume"] = None
                 st.session_state["improved_resume_docx"] = None
                 st.session_state["improved_resume_pdf"] = None
-                st.error(f"Unable to generate the improved resume right now: {exc}")
+                st.error(format_groq_error_message(exc))
 
     if st.session_state["improved_resume"]:
         st.text_area("Clean Resume Output", st.session_state["improved_resume"], height=520)
