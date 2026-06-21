@@ -1,0 +1,55 @@
+<svg width="1200" height="320" viewBox="0 0 1200 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="320" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#07111F"/>
+      <stop offset="0.5" stop-color="#0B1B33"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="160" y1="60" x2="1040" y2="260" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9"/>
+      <stop offset="0.5" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.15  0 1 0 0 0.2  0 0 1 0 0.4  0 0 0 0.9 0"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="320" rx="28" fill="url(#bg)"/>
+  <circle cx="130" cy="78" r="58" fill="#67E8F9" fill-opacity="0.12" filter="url(#glow)"/>
+  <circle cx="1060" cy="74" r="74" fill="#8B5CF6" fill-opacity="0.14" filter="url(#glow)"/>
+  <circle cx="1012" cy="250" r="96" fill="#F59E0B" fill-opacity="0.10" filter="url(#glow)"/>
+  <path d="M180 74H388C415 74 437 96 437 123V230C437 257 415 279 388 279H180C153 279 131 257 131 230V123C131 96 153 74 180 74Z" fill="#0F172A" stroke="url(#accent)" stroke-width="2"/>
+  <path d="M176 98H392" stroke="white" stroke-opacity="0.14" stroke-width="2"/>
+  <path d="M176 132H348" stroke="white" stroke-opacity="0.10" stroke-width="2"/>
+  <path d="M176 166H368" stroke="white" stroke-opacity="0.10" stroke-width="2"/>
+  <path d="M176 200H330" stroke="white" stroke-opacity="0.10" stroke-width="2"/>
+  <rect x="176" y="218" width="114" height="14" rx="7" fill="#67E8F9" fill-opacity="0.9"/>
+  <rect x="306" y="218" width="82" height="14" rx="7" fill="#8B5CF6" fill-opacity="0.9"/>
+  <circle cx="365" cy="118" r="18" fill="#67E8F9"/>
+  <path d="M355 118L362 125L375 111" stroke="#0B1220" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text x="512" y="120" fill="#E5EEF9" font-family="Segoe UI, Arial, sans-serif" font-size="54" font-weight="700">
+    AI Resume Analyzer Pro
+  </text>
+  <text x="512" y="168" fill="#C7D2FE" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="500">
+    ATS scoring • job-description matching • fast Groq-powered feedback
+  </text>
+  <text x="512" y="214" fill="#94A3B8" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="400">
+    Built for polished resume analysis and production-ready deployment
+  </text>
+
+  <g transform="translate(512 246)">
+    <rect width="142" height="34" rx="17" fill="#67E8F9" fill-opacity="0.18" stroke="#67E8F9" stroke-opacity="0.5"/>
+    <text x="20" y="22" fill="#E5EEF9" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">Structured JSON</text>
+  </g>
+  <g transform="translate(668 246)">
+    <rect width="126" height="34" rx="17" fill="#8B5CF6" fill-opacity="0.18" stroke="#8B5CF6" stroke-opacity="0.5"/>
+    <text x="20" y="22" fill="#E5EEF9" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">Retry Safe</text>
+  </g>
+  <g transform="translate(808 246)">
+    <rect width="148" height="34" rx="17" fill="#F59E0B" fill-opacity="0.18" stroke="#F59E0B" stroke-opacity="0.5"/>
+    <text x="20" y="22" fill="#E5EEF9" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">Streamlit Cloud</text>
+  </g>
+</svg>

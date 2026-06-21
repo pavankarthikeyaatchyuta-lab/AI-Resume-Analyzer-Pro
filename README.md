@@ -1,6 +1,13 @@
 # AI Resume Analyzer Pro
 
+![AI Resume Analyzer Pro banner](assets/readme-banner.svg)
+
 AI Resume Analyzer Pro is a Streamlit app that analyzes resumes against a target role or pasted job description, generates ATS-style feedback, visualizes scoring, and creates an improved resume version in multiple download formats.
+
+![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)
+![Groq](https://img.shields.io/badge/Groq-111827?logo=chatbot&logoColor=white)
+![Tests](https://img.shields.io/badge/pytest-passing-brightgreen)
 
 ## Features
 
